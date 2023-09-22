@@ -42,7 +42,6 @@ library
   exposed-modules:
       Main
   other-modules:
-      Common
       Terms
       Eval
       Parse

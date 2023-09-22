@@ -2,7 +2,6 @@
 
 module Parse where
 
-import Common ()
 import Data.Aeson
 import Terms(Term(..), File(..), Location(..), BinaryOp(..), Varr(..))
 import qualified Data.Aeson.KeyMap as HM
