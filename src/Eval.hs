@@ -17,7 +17,7 @@ data Void = Void {
 }deriving (Show, Eq)
 
 
-data ResultType = Term Term | StringResult String | BoolResult Bool | ClosureResult Closure | VoidResult Void | IntResult Integer
+data ResultType = Term Term | StringResult String | BoolResult Bool | ClosureResult Closure | VoidResult Void | IntResult Integer | TupleResult ResultType ResultType
 
 instance Show ResultType where
   show (Term term) = show term
@@ -26,6 +26,7 @@ instance Show ResultType where
   show (ClosureResult closure) = show closure
   show (VoidResult void) = show void
   show (IntResult int) = show int
+  show (TupleResult first second) = "(" ++ (show first) ++ ", " ++ (show second) ++ ")"
 
 eval :: Term -> Map.Map String ResultType -> IO (ResultType)
 eval term scope = case term of
@@ -139,6 +140,21 @@ eval term scope = case term of
       Varr text _ -> return text
     new_scope <- (Map.insert letName v) <$> return scope
     eval next new_scope
+  Tuple first second _ -> do
+    firstEval <- eval first scope
+    secondEval <- eval second scope
+    return (TupleResult firstEval secondEval)
+  First tuple _ -> do
+    tupleEval <- eval tuple scope
+    case tupleEval of
+      TupleResult first _ -> return first
+      _ -> error "Invalid first"
+  Second tuple _ -> do
+    tupleEval <- eval tuple scope
+    case tupleEval of
+      TupleResult _ second -> return second
+      _ -> error "Invalid second"
+  Error message _ _ -> error message
 
 interpret :: File -> IO (ResultType)
 interpret (File _ expr _) = eval expr Map.empty

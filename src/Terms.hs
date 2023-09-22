@@ -29,4 +29,8 @@ data Term = Let Varr Term Term Location
           | Function [Varr] Term Location
           | Print Term Location
           | Var String Location
+          | First Term Location
+          | Second Term Location
+          | Tuple Term Term Location
+          | Error String String Location
           deriving (Show, Eq)

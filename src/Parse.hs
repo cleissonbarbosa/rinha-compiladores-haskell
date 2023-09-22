@@ -26,6 +26,9 @@ instance FromJSON Term where
     Just "Int" -> Terms.Int <$> v .: "value" <*> v .: "location"
     Just "Str" -> Str <$> v .: "value" <*> v .: "location"
     Just "Bool" -> Terms.Bool <$> v .: "value" <*> v .: "location"
+    Just "First" -> First <$> v .: "value" <*> v .: "location"
+    Just "Second" -> Second <$> v .: "value" <*> v .: "location"
+    Just "Tuple" -> Tuple <$> v .: "first" <*> v .: "second" <*> v .: "location"
     -- print fail
     _ -> trace "Invalid term type" $ fail "Invalid term type"
 
