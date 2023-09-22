@@ -15,6 +15,6 @@ main = do
     [filename] -> do
       json <- B.readFile filename
       case decode json of
-        Just ast -> interpret ast
+        Just ast -> interpret ast >> return ()
         Nothing -> putStrLn "Failed to parse JSON"
     _ -> putStrLn "Usage: program <filename>"
