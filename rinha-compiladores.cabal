@@ -49,3 +49,4 @@ executable rinha-compiladores
       ,aeson >=2.2.0.0
       ,Cabal >=3.6.3.0
       ,containers >=0.6.5.1
+      ,process >=1.6.16.0
