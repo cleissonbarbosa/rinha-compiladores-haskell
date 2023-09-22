@@ -1,2 +1,2 @@
-build:
-	cabal build
+run:
+	cabal run rinha-compiladores $(file)

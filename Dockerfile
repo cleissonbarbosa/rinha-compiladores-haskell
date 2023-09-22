@@ -1,16 +1,16 @@
-# vim: nospell
-FROM tmcdonell/accelerate-llvm
+FROM haskell:9.2.8-slim-buster
 
-# Copy over just the cabal and stack file and install dependencies
 WORKDIR /opt/rinha-compiladores
-COPY ./stack.yaml /opt/rinha-compiladores/stack.yaml
-COPY ./rinha-compiladores.cabal /opt/rinha-compiladores/
-RUN stack build rinha-compiladores \
-  --only-dependencies \
-  --flag rinha-compiladores
 
 # Copy over the source files and build
-COPY . /opt/rinha-compiladores
-RUN stack install --flag rinha-compiladores
+COPY . /opt/rinha-compiladores/
+RUN cabal update && cabal install --only-dependencies -j4
+RUN cabal build
 
-CMD ["bash"]
+RUN echo "#!/bin/sh" >> /opt/run.sh
+RUN echo "cabal run rinha-compiladores ./examples/fib.json" >> /opt/run.sh
+RUN echo "cabal run rinha-compiladores ./examples/comb.json" >> /opt/run.sh
+RUN echo "cabal run rinha-compiladores ./examples/sum.json" >> /opt/run.sh
+RUN echo "cabal run rinha-compiladores ./examples/print.json" >> /opt/run.sh
+
+ENTRYPOINT ["/bin/bash", "/opt/run.sh"]

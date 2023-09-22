@@ -17,8 +17,7 @@ Simple interpreter for the "rinha de compiladores" challenge
 1. Install [Haskell](https://www.haskell.org/)
 1. Run the following commands:
 ```bash
-make build
-.\src\Main.exe <path-to-file>
+make run file=<path-to-file>
 ```
 ---
 

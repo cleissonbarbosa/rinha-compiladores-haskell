@@ -61,4 +61,3 @@ instance FromJSON BinaryOp where
     "Or" -> return Or
     _ -> fail "Invalid BinaryOp"
   parseJSON _ = trace "Failed to parse BinaryOp" $ fail "Failed to parse BinaryOp"
-
