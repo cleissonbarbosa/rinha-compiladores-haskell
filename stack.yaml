@@ -1,0 +1,12 @@
+resolver: lts-18.21
+
+packages:
+- .
+
+allow-newer: true
+
+flags:
+#  hid-examples:
+#    with-pg: True
+
+extra-deps:
