@@ -6,6 +6,8 @@
 
 ---
 
+[![Haskell](https://github.com/cleissonbarbosa/rinha-compiladores-haskell/actions/workflows/haskell.yml/badge.svg)](https://github.com/cleissonbarbosa/rinha-compiladores-haskell/actions/workflows/haskell.yml)
+
 Simple interpreter for the "rinha de compiladores" challenge
 
 ⚠️ **Notice**
