@@ -1,0 +1,7 @@
+version: '3'
+
+services:
+  rinha:
+    build: .
+    volumes:
+      - ./examples/source.rinha.json:/var/rinha/source.rinha.json

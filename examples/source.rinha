@@ -1,0 +1,31 @@
+let _ = print("Print: Hello world");
+let tuple = ("hello", 10);
+let _ = print("Tuple: " + first(tuple) + " " + second(tuple));
+let sum = fn (n) => {
+  if (n == 1) {
+    n
+  } else {
+    n + sum(n - 1)
+  }
+};
+let _ = print("Sum: " + sum(5));
+let fib = fn (n) => {
+  if (n < 2) {
+    n
+  } else {
+    fib(n - 1) + fib(n - 2)
+  }
+};
+let _ = print("fib: " + fib(10));
+let combination = fn (n, k) => {
+    let a = k == 0;
+    let b = k == n;
+    if (a || b)
+    {
+        1
+    }
+    else {
+        combination(n - 1, k - 1) + combination(n - 1, k)
+    }
+};
+print("comb: " + combination(10, 2))
