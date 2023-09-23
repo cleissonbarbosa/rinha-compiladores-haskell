@@ -1,2 +1,0 @@
-let tuple = ("hello", 10);
-print(first(tuple) + " " + second(tuple))

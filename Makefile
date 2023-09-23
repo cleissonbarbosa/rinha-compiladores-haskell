@@ -1,2 +1,2 @@
 run:
-	cabal run rinha-compiladores $(file)
+	cabal -v0 new-run rinha-compiladores $(file)
