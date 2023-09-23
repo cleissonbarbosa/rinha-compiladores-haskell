@@ -17,7 +17,7 @@ data Location = Location {
   filename :: String
 } deriving (Show, Eq)
 
-data BinaryOp = Add | Sub | Mul | Div | Mod | Eq | Neq | Lt | Gt | Leq | Geq | And | Or deriving (Enum, Show, Eq)
+data BinaryOp = Add | Sub | Mul | Div | Rem | Eq | Neq | Lt | Gt | Lte | Gte | And | Or deriving (Enum, Show, Eq)
 
 data Term = Let Varr Term Term Location
           | Binary Term BinaryOp Term Location

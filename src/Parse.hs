@@ -12,7 +12,7 @@ instance FromJSON File where
                          v .: "name" <*>
                          v .: "expression" <*>
                          v .: "location"
-  parseJSON _          = fail "Failed to parse AST"
+  parseJSON _          = trace "Failed to parse AST" $ fail "Failed to parse AST"
 
 instance FromJSON Term where
   parseJSON (Object v) = case HM.lookup "kind" v of
@@ -53,14 +53,14 @@ instance FromJSON BinaryOp where
     "Sub" -> return Sub
     "Mul" -> return Mul
     "Div" -> return Div
-    "Mod" -> return Mod
+    "Rem" -> return Rem
     "Eq" -> return Eq
     "Neq" -> return Neq
     "Lt" -> return Lt
     "Gt" -> return Gt
-    "Leq" -> return Leq
-    "Geq" -> return Geq
+    "Lte" -> return Lte
+    "Gte" -> return Gte
     "And" -> return And
     "Or" -> return Or
-    _ -> fail "Invalid BinaryOp"
+    _ -> trace "Invalid BinaryOp" $ fail "Invalid BinaryOp"
   parseJSON _ = trace "Failed to parse BinaryOp" $ fail "Failed to parse BinaryOp"

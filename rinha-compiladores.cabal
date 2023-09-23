@@ -50,3 +50,4 @@ executable rinha-compiladores
       ,Cabal >=3.6.3.0
       ,containers >=0.6.5.1
       ,process >=1.6.16.0
+      ,time >=1.11.1.1
