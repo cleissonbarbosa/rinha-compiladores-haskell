@@ -19,7 +19,7 @@ main = do
       start <- getCurrentTime
       if ".rinha" `isSuffixOf` filename
         then do
-          rinhaJson <- readProcess "./lib/bin/rinha.exe" [filename] ""
+          rinhaJson <- readProcess "./lib/bin/rinha" [filename] ""
           case decode (B.pack rinhaJson) of
             Just ast -> interpret ast >> return ()
             Nothing -> putStrLn "Failed to parse Rinha"
