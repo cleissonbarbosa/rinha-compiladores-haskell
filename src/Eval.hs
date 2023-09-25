@@ -237,6 +237,8 @@ evalBinaryOp op lhs rhs scope = case op of
         case rightEval of
           IntResult rightVal -> return (BoolResult (left /= rightVal))
           _ -> error "Invalid equality"
+      (StringResult left, IntResult right) -> return (BoolResult (left /= (show right)))
+      (IntResult left, StringResult right) -> return (BoolResult ((show left) /= right))
       _ -> error "Invalid equality"
   Or -> do
     orLeft <- eval lhs scope
@@ -250,4 +252,15 @@ evalBinaryOp op lhs rhs scope = case op of
           (BoolResult leftVal, BoolResult rightVal) -> return (BoolResult (leftVal || rightVal))
           _ -> error "Invalid or"
       _ -> error "Invalid or"
-  _ -> error "Invalid binary operator"
+  And -> do
+    andLeft <- eval lhs scope
+    andRight <- eval rhs scope
+    case (andLeft, andRight) of
+      (BoolResult left, BoolResult right) -> return (BoolResult (left && right))
+      (Term left, Term right) -> do
+        leftEval <- eval left scope
+        rightEval <- eval right scope
+        case (leftEval, rightEval) of
+          (BoolResult leftVal, BoolResult rightVal) -> return (BoolResult (leftVal && rightVal))
+          _ -> error "Invalid and"
+      _ -> error "Invalid and"
