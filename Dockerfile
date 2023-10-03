@@ -6,8 +6,10 @@ WORKDIR /opt/rinha-compiladores
 COPY . /opt/rinha-compiladores/
 RUN cabal update && cabal install --only-dependencies -j4
 RUN cabal build
+ENV PROJECT_VERSION=0.1
+ENV PROJECT_NAME=rinha-compiladores
 
-RUN echo "#!/bin/sh" >> /opt/run.sh
-RUN echo "cabal -v0 new-run rinha-compiladores /var/rinha/source.rinha.json" >> /opt/run.sh
+RUN echo "#!/bin/sh" >> /opt/rinha-compiladores/run.sh
+RUN echo "./dist-newstyle/build/x86_64-linux/ghc-9.2.8/$PROJECT_NAME-$PROJECT_VERSION/x/$PROJECT_NAME/build/$PROJECT_NAME/$PROJECT_NAME /var/rinha/source.rinha.json" >> /opt/rinha-compiladores/run.sh
 
-ENTRYPOINT ["/bin/bash", "/opt/run.sh"]
+ENTRYPOINT ["/bin/bash", "/opt/rinha-compiladores/run.sh"]
