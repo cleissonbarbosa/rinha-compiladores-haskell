@@ -1,42 +1,35 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 
+-- |
+-- Indice vetorial IVF nativo. Mantem apenas os primitivos que nao podem ser
+-- escritos em Rinha: o mmap dos arquivos do indice e a recuperacao dos
+-- candidatos mais proximos (`ivf_query`). A vetorizacao da transacao, o kNN
+-- final e a politica de fraude vivem em `rinha/server.rinha`.
 module Code.Eval.Builtins.IVF
-  ( classifyJsonBody
-  , ivfBuiltins
-  , maxJsonBodyBytes
+  ( ivfBuiltins
   ) where
 
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
 import Control.Monad (when)
-import Data.Aeson (decode)
 import Data.Array.IO (IOUArray, newArray, readArray, writeArray)
 import Data.Array.Unboxed (UArray, array, (!))
-import Data.Bits ((.&.), shiftL, (.|.))
+import Data.Bits (shiftL, (.|.))
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Internal as BSI
-import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Unsafe as BSU
 import Data.IORef (newIORef, readIORef, writeIORef)
-import qualified Data.Map as Map
-import Data.Maybe (fromMaybe)
 import Data.Word (Word8, Word32)
 import Foreign.C.String (CString, withCString)
 import Foreign.C.Types (CInt(..), CLong(..), CSize(..))
 import Foreign.ForeignPtr (newForeignPtr_)
-import Foreign.Marshal.Array (withArray)
 import Foreign.Ptr (Ptr, intPtrToPtr, nullPtr)
 import GHC.Float (castWord32ToFloat)
-import Parse ()
-import System.Directory (doesFileExist)
-import System.Environment (lookupEnv)
 import System.IO (IOMode(ReadMode), hFileSize, withFile)
 import System.IO.Unsafe (unsafePerformIO)
-import Terms (File(..))
 
 import Code.Eval.Helpers
-import Code.Eval.Runtime (eval)
 import Code.Eval.Types
 
 foreign import ccall unsafe "open"
@@ -47,12 +40,6 @@ foreign import ccall unsafe "close"
 
 foreign import ccall unsafe "mmap"
   c_mmap :: Ptr () -> CSize -> CInt -> CInt -> CInt -> CLong -> IO (Ptr Word8)
-
-foreign import ccall unsafe "rinha_fast_ivf_warmup"
-  c_fastIvfWarmup :: CString -> IO CInt
-
-foreign import ccall unsafe "rinha_fast_ivf_score"
-  c_fastIvfScore :: Ptr CInt -> CString -> CInt -> IO CInt
 
 dim :: Int
 dim = 14
@@ -65,9 +52,6 @@ q16Scale = 32767
 
 maxCandidates :: Int
 maxCandidates = 512
-
-maxJsonBodyBytes :: Int
-maxJsonBodyBytes = 64 * 1024
 
 ivfMagic :: BS.ByteString
 ivfMagic = BSC.pack "RIVF2026"
@@ -98,15 +82,11 @@ ivfRef :: MVar (Maybe IvfIndex)
 ivfRef = unsafePerformIO (newMVar Nothing)
 {-# NOINLINE ivfRef #-}
 
-algoRef :: MVar (Maybe File)
-algoRef = unsafePerformIO (newMVar Nothing)
-{-# NOINLINE algoRef #-}
-
-ivfBuiltins :: Map.Map String ResultType -> [(String, ResultType)]
-ivfBuiltins baseEnv =
-  [ ("fraud_score_json", builtinFraudScoreJson baseEnv)
-  , ("ivf_query", builtinIvfQuery)
-  , ("ivf_score", builtinIvfScore)
+-- | Apenas dois builtins ficam nativos: a recuperacao de candidatos e o
+-- aquecimento (mmap) do indice antes de aceitar trafego.
+ivfBuiltins :: [(String, ResultType)]
+ivfBuiltins =
+  [ ("ivf_query", builtinIvfQuery)
   , ("ivf_warmup", builtinIvfWarmup)
   ]
 
@@ -125,23 +105,6 @@ mmapFileReadOnly path = do
     error ("mmap: falha ao mapear " ++ path)
   fptr <- newForeignPtr_ ptr
   return (BSI.fromForeignPtr fptr 0 size)
-
-fastIvfWarmup :: IO ()
-fastIvfWarmup = do
-  resources <- resourcesDir
-  rc <- withCString resources c_fastIvfWarmup
-  when (rc /= 0) $
-    error "ivf_warmup: falha ao mapear indice"
-
-fastIvfScore :: [Int] -> Int -> IO Int
-fastIvfScore queryDims requestedProbe = do
-  resources <- resourcesDir
-  let probe = max 1 requestedProbe
-      query = map fromIntegral (take dim (queryDims ++ repeat 0)) :: [CInt]
-  score <- withArray query $ \ptr ->
-    withCString resources $ \cresources ->
-      c_fastIvfScore ptr cresources (fromIntegral probe)
-  return (max 0 (min 5 (fromIntegral score)))
 
 word32LE :: BS.ByteString -> Int -> Word32
 word32LE bytes off =
@@ -211,40 +174,6 @@ getIvfIndex =
       Nothing -> do
         idx <- loadIvfIndex
         return (Just idx, idx)
-
-algoJsonCandidates :: IO [FilePath]
-algoJsonCandidates = do
-  configured <- lookupEnv "RINHA_ALGO_JSON"
-  return $ case configured of
-    Just path -> [path]
-    Nothing -> ["/app/algo.json", "build/algo.json", "../build/algo.json", "algo.json"]
-
-resolveAlgoJsonPath :: IO FilePath
-resolveAlgoJsonPath = do
-  candidates <- algoJsonCandidates
-  go candidates
-  where
-    go [] = error "algo.rinha: nao encontrei algo.json; gere build/algo.json ou configure RINHA_ALGO_JSON"
-    go (path:rest) = do
-      exists <- doesFileExist path
-      if exists then return path else go rest
-
-loadAlgoProgram :: IO File
-loadAlgoProgram = do
-  path <- resolveAlgoJsonPath
-  json <- BL.readFile path
-  case decode json of
-    Just ast -> return ast
-    Nothing -> error ("algo.rinha: falha ao decodificar " ++ path)
-
-getAlgoProgram :: IO File
-getAlgoProgram =
-  modifyMVar algoRef $ \cached ->
-    case cached of
-      Just fileAst -> return (cached, fileAst)
-      Nothing -> do
-        fileAst <- loadAlgoProgram
-        return (Just fileAst, fileAst)
 
 nestedInts :: Int -> ResultType -> [Int]
 nestedInts 0 _ = []
@@ -415,247 +344,6 @@ ivfQuery idx queryDims limit requestedProbe = do
   selected <- ivfTopIds idx query limit bestClusters
   return (foldr (rCons . candidateResult idx) rNil selected)
 
-readNumMicros :: BS.ByteString -> Maybe Int
-readNumMicros raw =
-  let s0 = skipWsBS raw
-      quoted = not (BS.null s0) && BS.head s0 == wQuote
-      s1 = if quoted then BS.tail s0 else s0
-      neg = not (BS.null s1) && BS.head s1 == wMinus
-      s2 = if neg then BS.tail s1 else s1
-      (wholeBytes, rest0) = BS.span isDigitByte s2
-  in if BS.null wholeBytes
-       then Nothing
-       else
-         let whole = BS.foldl' (\acc c -> acc * 10 + fromIntegral (c - wZero)) 0 wholeBytes
-             (frac, _) =
-               if not (BS.null rest0) && BS.head rest0 == wDot
-                 then readFracMicros (BS.tail rest0) 0 0
-                 else (0, rest0)
-             signed = whole * 1000000 + frac
-             value = if neg then negate signed else signed
-         in Just value
-  where
-    readFracMicros s !acc !count
-      | BS.null s =
-          (acc * pow10i (6 - count), s)
-      | isDigitByte (BS.head s) =
-          if count < 6
-            then readFracMicros (BS.tail s) (acc * 10 + fromIntegral (BS.head s - wZero)) (count + 1)
-            else readFracMicros (BS.tail s) acc count
-      | otherwise =
-          (if count < 6 then acc * pow10i (6 - count) else acc, s)
-
-pow10i :: Int -> Int
-pow10i n
-  | n <= 0 = 1
-  | otherwise = 10 * pow10i (n - 1)
-
-findAfter :: BS.ByteString -> BS.ByteString -> Maybe BS.ByteString
-findAfter haystack needle =
-  let (_, suffix) = BSC.breakSubstring needle haystack
-  in if needle `BS.isPrefixOf` suffix
-       then Just (BS.drop (BS.length needle) suffix)
-       else Nothing
-
-keyPatBS :: String -> BS.ByteString
-keyPatBS keyName = BSC.pack ("\"" ++ keyName ++ "\"")
-
-afterColonBS :: BS.ByteString -> BS.ByteString -> Maybe BS.ByteString
-afterColonBS json key = do
-  afterKey <- findAfter json key
-  let afterKeyWs = skipWsBS afterKey
-      (_, afterSeek) = BS.break (== wColon) afterKeyWs
-  if BS.null afterSeek
-    then Nothing
-    else Just (skipWsBS (BS.tail afterSeek))
-
-getNumMiBS :: BS.ByteString -> BS.ByteString -> Int -> Int
-getNumMiBS json key fallback =
-  fromMaybe fallback (afterColonBS json key >>= readNumMicros)
-
-getBoolBS :: BS.ByteString -> BS.ByteString -> Int -> Int
-getBoolBS json key fallback =
-  case afterColonBS json key of
-    Nothing -> fallback
-    Just value
-      | BS.null value -> fallback
-      | BS.head value == 116 -> 1
-      | otherwise -> 0
-
-valueStringBS :: BS.ByteString -> BS.ByteString -> BS.ByteString
-valueStringBS json key =
-  case afterColonBS json key of
-    Just value | not (BS.null value) && BS.head value == wQuote ->
-      BS.takeWhile (/= wQuote) (BS.tail value)
-    _ -> BS.empty
-
-digitsValueBS :: BS.ByteString -> Int
-digitsValueBS bytes = go bytes 0
-  where
-    go s !acc
-      | BS.null s = acc
-      | isDigitByte (BS.head s) = go (BS.tail s) (acc * 10 + fromIntegral (BS.head s - wZero))
-      | otherwise = acc
-
-digitAtBS :: BS.ByteString -> Int -> Int
-digitAtBS bytes i =
-  if i < BS.length bytes && isDigitByte (BS.index bytes i)
-    then fromIntegral (BS.index bytes i - wZero)
-    else 0
-
-int2BS :: BS.ByteString -> Int -> Int
-int2BS bytes i = digitAtBS bytes i * 10 + digitAtBS bytes (i + 1)
-
-int4BS :: BS.ByteString -> Int -> Int
-int4BS bytes i =
-  digitAtBS bytes i * 1000 + digitAtBS bytes (i + 1) * 100 +
-  digitAtBS bytes (i + 2) * 10 + digitAtBS bytes (i + 3)
-
-daysFromCivilInt :: Int -> Int -> Int -> Int
-daysFromCivilInt y0 m d =
-  let y = if m < 3 then y0 - 1 else y0
-      era = if y < 0 then (y - 399) `div` 400 else y `div` 400
-      yoe = y - era * 400
-      mp = if m > 2 then m - 3 else m + 9
-      doy = (153 * mp + 2) `div` 5 + d - 1
-      doe = yoe * 365 + yoe `div` 4 - yoe `div` 100 + doy
-  in era * 146097 + doe - 719468
-
-isoSecondsBS :: BS.ByteString -> Int
-isoSecondsBS value =
-  let y = int4BS value 0
-      mo = int2BS value 5
-      d = int2BS value 8
-      h = int2BS value 11
-      mi = int2BS value 14
-      s = int2BS value 17
-  in daysFromCivilInt y mo d * 86400 + h * 3600 + mi * 60 + s
-
-mccRiskValue :: Int -> Int
-mccRiskValue code =
-  case code of
-    5411 -> 614
-    5812 -> 1229
-    5912 -> 819
-    5944 -> 1843
-    7801 -> 3277
-    7802 -> 3072
-    7995 -> 3482
-    4511 -> 1434
-    5311 -> 1024
-    5999 -> 2048
-    _ -> 2048
-
-classifyJsonBody :: Map.Map String ResultType -> BS.ByteString -> IO Int
-classifyJsonBody baseEnv json
-  | BS.null json || BS.length json > maxJsonBodyBytes = return 5
-  | amountMi < 1 = return 5
-  | otherwise = evalAlgoScore baseEnv algoScope
-  where
-    kTransaction = keyPatBS "transaction"
-    kAmount = keyPatBS "amount"
-    kInst = keyPatBS "installments"
-    kAvg = keyPatBS "avg_amount"
-    kTxCount = keyPatBS "tx_count_24h"
-    kKmHome = keyPatBS "km_from_home"
-    kKmCurr = keyPatBS "km_from_current"
-    kOnline = keyPatBS "is_online"
-    kPresent = keyPatBS "card_present"
-    kMcc = keyPatBS "mcc"
-    kReqAt = keyPatBS "requested_at"
-    kTimestamp = keyPatBS "timestamp"
-    kCustomer = keyPatBS "customer"
-    kMerchant = keyPatBS "merchant"
-    kTerminal = keyPatBS "terminal"
-    kLastTx = keyPatBS "last_transaction"
-    kId = keyPatBS "id"
-    kKnown = keyPatBS "known_merchants"
-
-    txJson = fromMaybe json (findAfter json kTransaction)
-    custJson = fromMaybe json (findAfter json kCustomer)
-    merchJson = fromMaybe json (findAfter json kMerchant)
-    termJson = fromMaybe json (findAfter json kTerminal)
-
-    amountMi = getNumMiBS txJson kAmount 0
-    instMi = getNumMiBS txJson kInst 1000000
-    custAvg0 = getNumMiBS custJson kAvg 0
-    custAvgMi = if custAvg0 < 1 then amountMi else custAvg0
-    merchAvg0 = getNumMiBS merchJson kAvg 0
-    merchAvgMi = if merchAvg0 < 1 then amountMi else merchAvg0
-    txCountMi = getNumMiBS custJson kTxCount 0
-    kmHomeMi = getNumMiBS termJson kKmHome 0
-    onlineV = getBoolBS termJson kOnline 0
-    presentV = getBoolBS termJson kPresent 1
-    mccCode = digitsValueBS (valueStringBS merchJson kMcc)
-    mccV = mccRiskValue mccCode
-    reqStr = valueStringBS txJson kReqAt
-    reqHasDate = if BS.null reqStr then 0 else 1 :: Int
-    reqHour = if reqHasDate == 1 then int2BS reqStr 11 else 12
-    reqDays = if reqHasDate == 1 then daysFromCivilInt (int4BS reqStr 0) (int2BS reqStr 5) (int2BS reqStr 8) else 0
-    reqDow = (reqDays + 3) - ((reqDays + 3) `div` 7) * 7
-    reqSecs = if reqHasDate == 1 then isoSecondsBS reqStr else 0
-    hasLast =
-      case afterColonBS json kLastTx of
-        Just value | not (BS.null value) && BS.head value /= 110 -> 1
-        _ -> 0 :: Int
-    lastStr = if hasLast == 1 then valueStringBS json kTimestamp else BS.empty
-    lastSecs = if hasLast == 1 then if BS.null lastStr then reqSecs else isoSecondsBS lastStr else 0
-    minutesLast = if hasLast == 1 then max 0 (reqSecs - lastSecs) `div` 60 else 0
-    kmLastMi = if hasLast == 1 then getNumMiBS json kKmCurr 0 else 0
-    merchIdStr = valueStringBS merchJson kId
-    knownList = fromMaybe BS.empty (afterColonBS custJson kKnown)
-    idInKnown = not (BS.null merchIdStr) && merchIdStr `BSC.isInfixOf` knownList
-    unknownV = if idInKnown then 0 else 1
-    algoScope = Map.fromList
-      [ ("amount", rinhaInt (fromIntegral (amountMi `div` 10000)))
-      , ("installments", rinhaInt (max 1 (fromIntegral (instMi `div` 1000000))))
-      , ("cust_avg", rinhaInt (max 1 (fromIntegral (custAvgMi `div` 10000))))
-      , ("hour", rinhaInt reqHour)
-      , ("dow", rinhaInt reqDow)
-      , ("has_last", rinhaInt hasLast)
-      , ("minutes_last", rinhaInt minutesLast)
-      , ("km_last", rinhaInt (max 0 (fromIntegral (kmLastMi `div` 1000))))
-      , ("km_home", rinhaInt (max 0 (fromIntegral (kmHomeMi `div` 1000))))
-      , ("tx_count", rinhaInt (max 0 (fromIntegral (txCountMi `div` 1000000))))
-      , ("online", rinhaInt onlineV)
-      , ("present", rinhaInt presentV)
-      , ("unknown_m", rinhaInt unknownV)
-      , ("mcc_risk", rinhaInt mccV)
-      , ("merch_avg", rinhaInt (max 1 (fromIntegral (merchAvgMi `div` 10000))))
-      ]
-
-evalAlgoScore :: Map.Map String ResultType -> Map.Map String ResultType -> IO Int
-evalAlgoScore baseEnv vars = do
-  File _ expr _ <- getAlgoProgram
-  result <- eval expr (Map.union vars baseEnv)
-  case result of
-    IntResult score -> return (max 0 (min 5 (fromInteger score)))
-    other -> error ("algo.rinha: esperado score inteiro, recebeu " ++ show other)
-
-skipWsBS :: BS.ByteString -> BS.ByteString
-skipWsBS = BS.dropWhile (\c -> c == wSpace || c == wTab || c == wLf || c == wCr)
-
-isDigitByte :: Word8 -> Bool
-isDigitByte c = c >= wZero && c <= wNine
-
-wSpace, wTab, wLf, wCr, wQuote, wColon, wDot, wMinus, wZero, wNine :: Word8
-wSpace = 32
-wTab = 9
-wLf = 10
-wCr = 13
-wQuote = 34
-wColon = 58
-wDot = 46
-wMinus = 45
-wZero = 48
-wNine = 57
-
-builtinFraudScoreJson :: Map.Map String ResultType -> ResultType
-builtinFraudScoreJson baseEnv = NativeResult "fraud_score_json" $ \args -> case args of
-  [StringResult payload] ->
-    IntResult . toInteger <$> classifyJsonBody baseEnv (BSC.pack payload)
-  _ -> error "fraud_score_json: esperado (string)"
-
 builtinIvfQuery :: ResultType
 builtinIvfQuery = NativeResult "ivf_query" $ \args -> case args of
   [query, IntResult requestedLimit] -> do
@@ -669,14 +357,9 @@ builtinIvfQuery = NativeResult "ivf_query" $ \args -> case args of
     ivfQuery idx (nestedInts dim query) 128 probe
   _ -> error "ivf_query: esperado (dvec, max_candidates)"
 
-builtinIvfScore :: ResultType
-builtinIvfScore = NativeResult "ivf_score" $ \args -> case args of
-  [query] -> do
-    probe <- envInt "RINHA_PROBE" 3
-    IntResult . toInteger <$> fastIvfScore (nestedInts dim query) probe
-  _ -> error "ivf_score: esperado (dvec)"
-
+-- | Forca o mmap/parse do indice antes de aceitar trafego, para que a
+-- primeira request nao pague o custo de carga.
 builtinIvfWarmup :: ResultType
 builtinIvfWarmup = NativeResult "ivf_warmup" $ \args -> case args of
-  [] -> fastIvfWarmup >> return (IntResult 0)
+  [] -> getIvfIndex >> return (IntResult 0)
   _ -> error "ivf_warmup: esperado ()"

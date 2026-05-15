@@ -48,9 +48,6 @@ executable rinha-compiladores
       Parse
   hs-source-dirs:
       src
-  c-sources:
-      cbits/fastivf.c
-  cc-options: -O3
   ghc-options: -threaded -rtsopts -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wno-unused-top-binds -Wno-orphans -Wno-incomplete-uni-patterns -Wno-incomplete-patterns -Wno-unused-matches
   build-depends:
        base >=4.12

@@ -8,6 +8,4 @@ import Code.Eval.Builtins.Network (networkBuiltins)
 import Code.Eval.Types (ResultType)
 
 defaultEnv :: Map.Map String ResultType
-defaultEnv = env
-  where
-    env = Map.fromList (commonBuiltins ++ networkBuiltins env ++ ivfBuiltins env)
+defaultEnv = Map.fromList (commonBuiltins ++ networkBuiltins ++ ivfBuiltins)
