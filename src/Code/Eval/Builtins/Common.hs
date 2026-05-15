@@ -2,7 +2,9 @@ module Code.Eval.Builtins.Common (commonBuiltins) where
 
 import Control.Concurrent (forkIO)
 import Data.Bits ((.&.))
+import Data.Char (isDigit, isSpace)
 import Data.IORef (atomicModifyIORef', newIORef)
+import Data.List (isInfixOf)
 import Data.Maybe (fromMaybe)
 import System.Environment (lookupEnv)
 import System.IO (hSetBinaryMode, stdin)
@@ -18,6 +20,11 @@ commonBuiltins =
   , ("str_len", builtinStrLen)
   , ("str_byte", builtinStrByte)
   , ("str_from_chars", builtinStrFromChars)
+  , ("str_index", builtinStrIndex)
+  , ("str_drop", builtinStrDrop)
+  , ("str_take_until", builtinStrTakeUntil)
+  , ("str_contains", builtinStrContains)
+  , ("str_number_token", builtinStrNumberToken)
   , ("env", builtinEnv)
   , ("env_int", builtinEnvInt)
   , ("spawn", builtinSpawn)
@@ -56,6 +63,51 @@ builtinStrFromChars = NativeResult "str_from_chars" $ \args -> case args of
     go (TupleResult (IntResult 1) (TupleResult (IntResult c) rest)) =
       toEnum (fromInteger (c .&. 255)) : go rest
     go other = error ("str_from_chars: lista invalida " ++ show other)
+
+builtinStrIndex :: ResultType
+builtinStrIndex = NativeResult "str_index" $ \args -> case args of
+  [StringResult hay, StringResult needle] -> return (IntResult (toInteger (findIndexOf hay needle)))
+  _ -> error "str_index: esperado (string, string)"
+
+builtinStrDrop :: ResultType
+builtinStrDrop = NativeResult "str_drop" $ \args -> case args of
+  [StringResult s, IntResult n] -> return (StringResult (drop (max 0 (fromInteger n)) s))
+  _ -> error "str_drop: esperado (string, int)"
+
+builtinStrTakeUntil :: ResultType
+builtinStrTakeUntil = NativeResult "str_take_until" $ \args -> case args of
+  [StringResult s, IntResult raw] ->
+    let ch = toEnum (fromInteger (raw .&. 255))
+    in return (StringResult (takeWhile (/= ch) s))
+  _ -> error "str_take_until: esperado (string, int)"
+
+builtinStrContains :: ResultType
+builtinStrContains = NativeResult "str_contains" $ \args -> case args of
+  [StringResult hay, StringResult needle] -> return (IntResult (if needle `isInfixOf` hay then 1 else 0))
+  _ -> error "str_contains: esperado (string, string)"
+
+builtinStrNumberToken :: ResultType
+builtinStrNumberToken = NativeResult "str_number_token" $ \args -> case args of
+  [StringResult s] ->
+    let raw = dropWhile isSpace s
+        value = case raw of
+          '"':rest -> rest
+          _ -> raw
+    in return (StringResult (takeWhile isNumberChar value))
+  _ -> error "str_number_token: esperado (string)"
+
+findIndexOf :: String -> String -> Int
+findIndexOf _ "" = 0
+findIndexOf hay needle = go 0 hay
+  where
+    needleLen = length needle
+    go _ [] = -1
+    go i rest
+      | take needleLen rest == needle = i
+      | otherwise = go (i + 1) (drop 1 rest)
+
+isNumberChar :: Char -> Bool
+isNumberChar c = isDigit c || c == '.' || c == '-'
 
 builtinEnv :: ResultType
 builtinEnv = NativeResult "env" $ \args -> case args of
