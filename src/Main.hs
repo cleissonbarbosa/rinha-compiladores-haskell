@@ -7,12 +7,15 @@ import Data.List (isSuffixOf)
 import Data.Time (getCurrentTime, diffUTCTime)
 import qualified Data.ByteString.Lazy.Char8 as B
 import System.Environment ( getArgs )
+import System.IO (BufferMode(LineBuffering), hSetBuffering, stderr, stdout)
 import System.Process (readProcess)
 import Parse ()
 import Eval ( interpret )
 
 main :: IO ()
 main = do
+  hSetBuffering stdout LineBuffering
+  hSetBuffering stderr LineBuffering
   args <- getArgs
   case args of
     [filename] -> do

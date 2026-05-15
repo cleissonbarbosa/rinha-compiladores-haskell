@@ -19,6 +19,12 @@ data Location = Location {
 
 data BinaryOp = Add | Sub | Mul | Div | Rem | Eq | Neq | Lt | Gt | Lte | Gte | And | Or deriving (Enum, Show, Eq)
 
+data RecordField = RecordField {
+  recordFieldName :: Varr,
+  recordFieldValue :: Term,
+  recordFieldLocation :: Location
+} deriving (Show, Eq)
+
 data Term = Let Varr Term Term Location
           | Binary Term BinaryOp Term Location
           | Int Integer Location
@@ -32,5 +38,7 @@ data Term = Let Varr Term Term Location
           | First Term Location
           | Second Term Location
           | Tuple Term Term Location
+          | Record [RecordField] Location
+          | Field Term Varr Location
           | Error String String Location
           deriving (Show, Eq)
